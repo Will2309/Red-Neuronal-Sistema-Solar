@@ -1,0 +1,59 @@
+import serial
+import time
+import pandas as pd
+from neuralprophet import NeuralProphet
+from datetime import datetime
+
+# Configurar el puerto serial para la comunicación con Arduino
+puerto = 'COM3'   # Ajusta el puerto serial según corresponda
+baud_rate = 9600
+arduino = serial.Serial(puerto, baud_rate, timeout=1)
+
+# Leer el dataset de la serie temporal
+df = pd.read_csv('serie_temp.csv')
+
+# Crear el modelo NeuralProphet
+model = NeuralProphet(
+    growth="linear",
+    changepoints=None,
+    n_changepoints=5,
+    changepoints_range=0.8,
+    trend_reg=0,
+    trend_reg_threshold=False,
+    yearly_seasonality="auto",
+    weekly_seasonality="auto",
+    daily_seasonality="auto",
+    seasonality_mode="additive",
+    seasonality_reg=0,
+    n_forecasts=1,
+    n_lags=0,
+    num_hidden_layers=0,
+    d_hidden=None,
+    learning_rate=None,
+    epochs=40,
+    loss_func="Huber",
+    normalize="auto",
+    impute_missing=True,
+)
+model.fit(df, freq="H")
+
+# Funcion para predecir el angulo
+def pred_angulo_optimo():
+    fecha_actual = datetime.now()
+    last_date = datetime.strptime(df.ds[len(df)-1], '%Y-%m-%d %H:%M:%S')
+    periods = round((fecha_actual - last_date).total_seconds() / 3600)
+    future = model.make_future_dataframe(df_raw_daily, periods=periods, n_historic_predictions=len(df))
+    forecast = model.predict(future)
+    ang_opt = forecast.yhat1[len(forecast.yhat1)-1]
+    return round(ang_opt, 1)
+
+# Funcion para enviar el angulo óptimo a través del puerto serial
+def enviar_angulo_optimo():
+    ang_opt = pred_angulo_optimo()
+    arduino.write(str(ang_opt).encode())
+    print('Ángulo óptimo enviado:', ang_opt)
+
+# Ciclo principal de ejecución
+while True:
+    enviar_angulo_optimo()
+    time.sleep(1800)  # Esperar 30 minutos antes de volver a enviar el ángulo óptimo
